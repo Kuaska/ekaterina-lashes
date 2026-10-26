@@ -131,10 +131,6 @@
       if (/^https?:\/\//i.test(v)) return v;
       return "https://t.me/" + v.replace(/^@/, "").replace(/^t\.me\//i, "");
     }
-    if (kind === "vk") {
-      if (/^https?:\/\//i.test(v)) return v;
-      return "https://vk.com/" + v.replace(/^vk\.com\//i, "").replace(/^@/, "");
-    }
     return "#";
   }
 
@@ -142,8 +138,7 @@
     if (!value) return "";
     var icon = {
       phone: '<svg viewBox="0 0 24 24" width="12" height="12"><path d="M6.5 3.5h3l1.5 4-2 1.5a12 12 0 0 0 6 6l1.5-2 4 1.5v3c0 1.1-.9 2-2 2A17 17 0 0 1 4.5 5.5c0-1.1.9-2 2-2Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
-      telegram: '<svg viewBox="0 0 24 24" width="12" height="12"><path d="m21 4-2.6 15-6.4-4.7L9 17l.3-4.2L18 5.5 7.4 11.4 3 9.8 21 4Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
-      vk: '<svg viewBox="0 0 24 24" width="12" height="12"><path d="M3.5 8.5c.4 4.6 3 8 7.4 8.2 0 0 2.4.2 3.6-1.6v2.4c0 .8.3 1.7 1.3 1.7 1.3 0 2.2-1.2 2.9-2.1 1.1-1.4 2-3 2-3.6 0-.9-.8-1.2-1.3-.7-.7.7-1.6 1.4-2.4 1.6-.5.1-.6-.4-.4-1.2.3-1.2 1-2.6 1.3-3.9.2-.9-.2-1.3-1-1.3h-2.4c-.6 0-.9.3-1.2 1-.5 1.3-1.4 3.1-2.1 3.1-.5 0-.6-.5-.5-1.4l.3-2.2c.1-1-.1-1.4-.8-1.4H7.4c-.5 0-.8.3-.8.8 0 .6.6.7.9 1.4Z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>'
+      telegram: '<svg viewBox="0 0 24 24" width="12" height="12"><path d="m21 4-2.6 15-6.4-4.7L9 17l.3-4.2L18 5.5 7.4 11.4 3 9.8 21 4Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>'
     }[kind];
     var label = kind === "phone" ? value : (kind === "telegram" ? (String(value).charAt(0) === "@" ? value : "@" + value) : value);
     return '<a class="ap-contact" href="' + esc(contactUrl(kind, value)) + '" target="_blank" rel="noopener">' +
@@ -183,8 +178,7 @@
       if (!query) return true;
       var hay = [
         a.name, a.serviceTitle, a.date, a.time, a.comment, a.notes,
-        a.contacts && a.contacts.phone, a.contacts && a.contacts.telegram,
-        a.contacts && a.contacts.vk
+        a.contacts && a.contacts.phone, a.contacts && a.contacts.telegram
       ].join(" ").toLowerCase();
       return hay.indexOf(query) !== -1;
     });
@@ -240,8 +234,7 @@
 
     var contactsHtml = [
       contactChip("phone", contacts.phone),
-      contactChip("telegram", contacts.telegram),
-      contactChip("vk", contacts.vk)
+      contactChip("telegram", contacts.telegram)
     ].join("");
 
     var actions = "";
@@ -361,7 +354,6 @@
       var c = appointment.contacts || {};
       $("#ap-phone").value = c.phone || "";
       $("#ap-telegram").value = c.telegram || "";
-      $("#ap-vk").value = c.vk || "";
       select.value = appointment.serviceId;
       $("#ap-status").value = appointment.status;
       $("#ap-date").value = appointment.date;
@@ -414,8 +406,7 @@
 
       var contacts = {
         phone: $("#ap-phone").value.trim(),
-        telegram: $("#ap-telegram").value.trim(),
-        vk: $("#ap-vk").value.trim()
+        telegram: $("#ap-telegram").value.trim()
       };
       Object.keys(contacts).forEach(function (k) { if (!contacts[k]) delete contacts[k]; });
 
@@ -764,7 +755,6 @@
     $("#hold-hours").value = settings.holdHours;
     $("#settings-phone").value = settings.phone || "";
     $("#settings-telegram").value = settings.telegram || "";
-    $("#settings-vk").value = settings.vk || "";
 
     var count = S.getAppointments().length;
     $("#storage-note").textContent = "Сейчас в браузере: " + count + " " +
@@ -792,7 +782,6 @@
       settings.holdHours = Math.max(1, Math.min(72, Number($("#hold-hours").value) || 24));
       settings.phone = $("#settings-phone").value.trim();
       settings.telegram = $("#settings-telegram").value.trim();
-      settings.vk = $("#settings-vk").value.trim();
       S.saveSettings(settings);
       renderSettings();
       toast("Настройки сохранены");
@@ -847,13 +836,15 @@
 
     $("#demo-btn").addEventListener("click", function () {
       if (!confirm("Добавить несколько демонстрационных записей? Их можно удалить в любой момент.")) return;
-      var services = S.getServices();
+      var services = S.getServices().filter(function (s) { return s.active; });
+      if (!services.length) { toast("Сначала добавьте услугу"); return; }
+      var main = services[0];
       var today = S.startOfDay(new Date());
       var demo = [
-        { offset: 1, time: "11:00", name: "Анна", service: services[0], status: "pending", phone: "+7 (912) 111-22-33", comment: "Первый раз, ресницы тонкие." },
-        { offset: 1, time: "15:30", name: "Мария", service: services[3], status: "confirmed", telegram: "@maria_tmn" },
-        { offset: 2, time: "12:00", name: "Ольга", service: services[5], status: "confirmed", vk: "vk.com/olga" },
-        { offset: -2, time: "16:00", name: "Дарья", service: services[1], status: "done", phone: "+7 (912) 444-55-66" }
+        { offset: 1, time: "11:00", name: "Анна", service: main, status: "pending", phone: "+7 (912) 111-22-33", comment: "Первый раз, ресницы тонкие." },
+        { offset: 1, time: "15:30", name: "Мария", service: main, status: "confirmed", telegram: "@maria_tmn" },
+        { offset: 2, time: "12:00", name: "Ольга", service: main, status: "confirmed", phone: "+7 (912) 777-88-99" },
+        { offset: -2, time: "16:00", name: "Дарья", service: main, status: "done", phone: "+7 (912) 444-55-66" }
       ];
       demo.forEach(function (item) {
         var date = S.toISO(S.addDays(today, item.offset));
@@ -865,7 +856,7 @@
           durationMin: item.service.durationMin,
           price: item.service.price,
           name: item.name,
-          contacts: { phone: item.phone, telegram: item.telegram, vk: item.vk },
+          contacts: { phone: item.phone, telegram: item.telegram },
           comment: item.comment || "",
           source: "demo"
         });

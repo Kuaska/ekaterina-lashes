@@ -123,6 +123,29 @@
     // заново наблюдаем за новыми .reveal
     initReveal();
     buildServiceChoices(services);
+    applySingleService(services);
+  }
+
+  /* Если услуга одна — незачем спрашивать, какую выбрать:
+     выбираем её сразу и открываем календарь. */
+  function applySingleService(services) {
+    var card = $("#booking-card");
+    if (!card) return;
+
+    var single = services.length === 1;
+    card.classList.toggle("is-single", single);
+
+    var dots = $$(".step");
+    dots.forEach(function (dot, i) {
+      dot.classList.toggle("is-hidden", single && i === 0);
+      var num = dot.querySelector("i");
+      if (num) num.textContent = single && i > 0 ? String(i) : String(i + 1);
+    });
+
+    if (single) {
+      selectService(services[0].id);
+      goStep(2, true);
+    }
   }
 
   function buildServiceChoices(services) {
@@ -164,7 +187,7 @@
   }
 
   /* ── Шаги ────────────────────────────────────────────── */
-  function goStep(step) {
+  function goStep(step, silent) {
     state.step = step;
     $$(".booking-pane").forEach(function (pane) {
       pane.classList.toggle("is-active", Number(pane.dataset.step) === step);
@@ -177,6 +200,8 @@
     if (step === 2) renderCalendar();
     if (step === 3) renderSlots();
     if (step === 4) renderSummary();
+
+    if (silent) return;
 
     var card = $("#booking-card");
     if (card) {
@@ -379,7 +404,7 @@
 
     var contacts = selectedContacts();
     if (!contacts.length) {
-      showError("Выберите хотя бы один способ связи — телефон, Telegram или ВКонтакте.");
+      showError("Выберите хотя бы один способ связи — телефон или Telegram.");
       return null;
     }
 
@@ -404,16 +429,6 @@
         return null;
       }
       result.telegram = tg.value.trim();
-    }
-    if (contacts.indexOf("vk") !== -1) {
-      var vk = $("#client-vk");
-      if (!vk.value.trim()) {
-        vk.closest(".field").classList.add("has-error");
-        showError("Укажите ссылку или ник ВКонтакте.");
-        vk.focus();
-        return null;
-      }
-      result.vk = vk.value.trim();
     }
 
     if (!$("#consent").checked) {
@@ -492,7 +507,8 @@
     $("#form-error").hidden = true;
     $("#to-step-3").disabled = true;
     $("#to-step-4").disabled = true;
-    goStep(1);
+    var single = $("#booking-card") && $("#booking-card").classList.contains("is-single");
+    goStep(single ? 2 : 1, true);
   }
 
   function initBooking() {
@@ -616,13 +632,6 @@
         $$('a[href*="t.me/"]').forEach(function (a) { a.href = "https://t.me/" + tg; });
         $$('.contact-row[href*="t.me/"] .contact-value').forEach(function (a) { a.textContent = "@" + tg; });
       }
-    }
-
-    if (settings.vk) {
-      var vk = String(settings.vk).trim();
-      var vkUrl = /^https?:\/\//i.test(vk) ? vk : "https://" + vk.replace(/^@/, "");
-      $$('a[href*="vk.com/"]').forEach(function (a) { a.href = vkUrl; });
-      $$('.contact-row[href*="vk.com/"] .contact-value').forEach(function (a) { a.textContent = vk; });
     }
   }
 

@@ -673,17 +673,39 @@ button { cursor: pointer; }
 .service-pick svg { transition: transform .4s var(--ease); }
 .service-card:hover .service-pick svg { transform: translateX(4px); }
 
-.services-note {
-  margin: 34px 0 0;
-  font-size: 13px;
-  color: var(--muted);
+.service-grid:has(.service-card:only-child) {
+  grid-template-columns: minmax(0, 660px);
+  justify-content: center;
+}
+
+/* Секрет: тихая сноска про скидку на первый визит */
+.secret {
+  max-width: 620px;
+  margin: clamp(30px, 4vw, 46px) auto 0;
+  padding-top: 26px;
+  border-top: 1px solid rgba(201, 164, 107, .45);
   text-align: center;
 }
 
-.services-note a {
-  color: var(--bordeaux);
-  border-bottom: 1px solid rgba(92, 31, 43, .3);
-  padding-bottom: 1px;
+.secret-mark {
+  display: block;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 14px;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.secret p {
+  margin: 12px auto 0;
+  max-width: 46ch;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: clamp(17px, 1.7vw, 20px);
+  line-height: 1.6;
+  color: var(--plum);
+  opacity: .86;
 }
 
 /* ── Работы ────────────────────────────────────────────── */
@@ -691,7 +713,7 @@ button { cursor: pointer; }
 
 .gallery {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   grid-auto-rows: 245px;
   gap: 14px;
   margin-top: clamp(36px, 4vw, 56px);
@@ -699,13 +721,14 @@ button { cursor: pointer; }
 
 .gallery-item {
   position: relative;
+  grid-row: span 2;
   margin: 0;
   border-radius: 14px;
   overflow: hidden;
   background: var(--powder);
 }
 
-.gallery-hero { grid-column: span 2; grid-row: span 2; }
+.gallery-hero { grid-row: span 2; }
 
 .gallery-item img {
   width: 100%;
@@ -1028,8 +1051,15 @@ button { cursor: pointer; }
 .step.is-active i { background: var(--bordeaux); border-color: var(--bordeaux); color: var(--cream); }
 .step.is-done i { border-color: var(--gold); color: var(--gold); }
 
+.step.is-hidden { display: none; }
+
 .booking-pane { display: none; }
 .booking-pane.is-active { display: block; animation: paneIn .45s var(--ease); }
+
+/* Одна услуга: шаг выбора скрыт, календарь открывается сразу */
+.booking-card.is-single .booking-pane[data-step="1"] { display: none; }
+.booking-card.is-single .booking-pane[data-step="2"] .pane-actions { justify-content: flex-end; }
+.booking-card.is-single .booking-pane[data-step="2"] [data-back] { display: none; }
 
 @keyframes paneIn {
   from { opacity: 0; transform: translateY(10px); }
@@ -1550,7 +1580,7 @@ a.contact-row:hover { color: var(--bordeaux); padding-left: 5px; }
   .hero-note { display: none; }
   .service-grid { grid-template-columns: 1fr 1fr; }
   .review-grid { grid-template-columns: 1fr; }
-  .gallery { grid-template-columns: repeat(3, 1fr); grid-auto-rows: 210px; }
+  .gallery { grid-template-columns: repeat(2, 1fr); grid-auto-rows: 210px; }
 }
 
 @media (max-width: 860px) {
@@ -1573,7 +1603,6 @@ a.contact-row:hover { color: var(--bordeaux); padding-left: 5px; }
   .faq-grid .section-head { position: static; }
 
   .gallery { grid-template-columns: 1fr 1fr; grid-auto-rows: 170px; }
-  .gallery-hero { grid-column: span 2; grid-row: span 2; }
 
   .mobile-cta { display: flex; }
   .site-footer { padding-bottom: 96px; }
@@ -1597,7 +1626,6 @@ a.contact-row:hover { color: var(--bordeaux); padding-left: 5px; }
 
   .service-grid { grid-template-columns: 1fr; }
   .gallery { grid-template-columns: 1fr; grid-auto-rows: 220px; }
-  .gallery-hero { grid-column: span 1; grid-row: span 2; }
 
   .section { padding-block: 62px; }
   .booking-card { padding: 20px 16px 22px; }

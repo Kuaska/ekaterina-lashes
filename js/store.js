@@ -7,7 +7,7 @@
   "use strict";
 
   var DB_VERSION = "v1";
-  var K_SERVICES = "ek_services_" + DB_VERSION;
+  var K_SERVICES = "ek_services_v2";
   var K_SETTINGS = "ek_settings_" + DB_VERSION;
   var K_APPOINTMENTS = "ek_appointments_" + DB_VERSION;
 
@@ -19,56 +19,11 @@
     {
       id: "lamination",
       title: "Ламинирование ресниц",
-      description: "Изгиб, объём и ухоженный вид без туши. Форму подбираю под разрез глаз и характер ресниц.",
+      description: "Изгиб, объём и ухоженный вид без туши и наращивания. Форму подбираю под разрез глаз и характер ресниц.",
       price: 2500,
       durationMin: 90,
       active: true,
       sortOrder: 1
-    },
-    {
-      id: "botox",
-      title: "Ботокс ресниц",
-      description: "Питание и укрепление по всей длине. Ресницы выглядят плотнее и меньше выпадают.",
-      price: 2000,
-      durationMin: 60,
-      active: true,
-      sortOrder: 2
-    },
-    {
-      id: "tint",
-      title: "Окрашивание ресниц",
-      description: "Глубокий ровный цвет без эффекта туши. Держится до четырёх недель.",
-      price: 1200,
-      durationMin: 45,
-      active: true,
-      sortOrder: 3
-    },
-    {
-      id: "brows-lam",
-      title: "Ламинирование бровей",
-      description: "Послушные брови с мягкой укладкой — без жёсткой фиксации и «прилизанного» вида.",
-      price: 1800,
-      durationMin: 45,
-      active: true,
-      sortOrder: 4
-    },
-    {
-      id: "brows-shape",
-      title: "Коррекция бровей",
-      description: "Форма по лицу: воск или нить, мягко и точно. С учётом асимметрии и роста волосков.",
-      price: 900,
-      durationMin: 30,
-      active: true,
-      sortOrder: 5
-    },
-    {
-      id: "complex",
-      title: "Комплекс: ресницы и брови",
-      description: "Ламинирование ресниц и бровей за один визит. Самый спокойный способ всё успеть.",
-      price: 3800,
-      durationMin: 120,
-      active: true,
-      sortOrder: 6
     }
   ];
 
@@ -93,8 +48,7 @@
     maxDaysAhead: 60,
     holdHours: 24,
     phone: "+7 (912) 000-00-00",
-    telegram: "@ekaterina_lashes",
-    vk: "vk.com/ekaterina_lashes"
+    telegram: "@laminationTyumen"
   };
 
   /* ── Утилиты дат ─────────────────────────────────────── */
