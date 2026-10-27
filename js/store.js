@@ -1,15 +1,11 @@
 /* =========================================================
    store.js — общие данные и логика записи
-   Работает без сервера: данные хранятся в localStorage.
-   Ключи версионированы, чтобы обновления сайта не ломали данные.
+   Данные приходят с сервера (/api), в браузере только кэш.
    ========================================================= */
 (function (global) {
   "use strict";
 
   var DB_VERSION = "v1";
-  var K_SERVICES = "ek_services_v2";
-  var K_SETTINGS = "ek_settings_" + DB_VERSION;
-  var K_APPOINTMENTS = "ek_appointments_" + DB_VERSION;
 
   var SLOT_STEP = 30;      // шаг сетки, минут
   var SLOT_BUFFER = 15;    // буфер между клиентами, минут
@@ -122,62 +118,119 @@
     return rest ? h + " ч " + rest + " мин" : h + " ч";
   }
 
-  /* ── Хранилище ───────────────────────────────────────── */
-  function read(key, fallback) {
-    try {
-      var raw = global.localStorage.getItem(key);
-      if (!raw) return clone(fallback);
-      var parsed = JSON.parse(raw);
-      return parsed == null ? clone(fallback) : parsed;
-    } catch (e) {
-      return clone(fallback);
-    }
-  }
-
-  function write(key, value) {
-    try {
-      global.localStorage.setItem(key, JSON.stringify(value));
-      return true;
-    } catch (e) {
-      console.warn("Не удалось сохранить данные", e);
-      return false;
-    }
-  }
+  /* ── Хранилище (данные на сервере) ───────────────────── */
+  var cache = { services: null, settings: null, appointments: null, admin: false };
+  var errorHandler = null;
 
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
   }
 
+  function api(path, options) {
+    var opts = options || {};
+    opts.credentials = "same-origin";
+    opts.headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
+    return fetch("api" + path, opts).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (body) {
+        if (!res.ok) {
+          var err = new Error(body && body.error ? body.error : "Ошибка сервера (" + res.status + ")");
+          err.status = res.status;
+          throw err;
+        }
+        return body;
+      });
+    });
+  }
+
+  function applyPublic(data) {
+    if (!data) return;
+    cache.services = data.services || null;
+    cache.settings = data.settings || null;
+    cache.appointments = data.busy || [];
+    cache.admin = false;
+  }
+
+  function applyAdmin(data) {
+    if (!data) return;
+    cache.services = data.services || null;
+    cache.settings = data.settings || null;
+    cache.appointments = data.appointments || [];
+    cache.admin = true;
+  }
+
+  /** Загрузить данные: mode = "public" | "admin". */
+  function init(mode) {
+    if (mode === "admin") {
+      return api("/admin/data").then(function (data) {
+        applyAdmin(data);
+        return { authed: true };
+      }).catch(function (err) {
+        if (err.status === 401) return { authed: false };
+        throw err;
+      });
+    }
+    return api("/public").then(function (data) {
+      applyPublic(data);
+      return { authed: false };
+    }).catch(function (err) {
+      console.warn("Сервер недоступен, показаны базовые данные", err);
+      return { authed: false, offline: true };
+    });
+  }
+
+  function login(password) {
+    return api("/admin/login", { method: "POST", body: JSON.stringify({ password: password }) })
+      .then(function (data) { applyAdmin(data); return true; });
+  }
+
+  function logout() {
+    cache.admin = false;
+    cache.appointments = [];
+    return api("/admin/logout", { method: "POST" }).catch(function () {});
+  }
+
+  function background(promise) {
+    promise.catch(function (err) {
+      console.warn("Не удалось сохранить на сервере", err);
+      if (typeof errorHandler === "function") errorHandler(err);
+    });
+  }
+
+  function onError(fn) { errorHandler = fn; }
+
   function getServices() {
-    var list = read(K_SERVICES, DEFAULT_SERVICES);
+    var list = cache.services;
     if (!Array.isArray(list) || !list.length) list = clone(DEFAULT_SERVICES);
-    return list.sort(function (a, b) { return (a.sortOrder || 0) - (b.sortOrder || 0); });
+    return list.slice().sort(function (a, b) { return (a.sortOrder || 0) - (b.sortOrder || 0); });
   }
 
   function saveServices(list) {
-    return write(K_SERVICES, list);
+    cache.services = clone(list);
+    background(api("/admin/services", { method: "PUT", body: JSON.stringify({ services: list }) }));
+    return true;
   }
 
   function getSettings() {
-    var saved = read(K_SETTINGS, DEFAULT_SETTINGS);
+    var saved = cache.settings || {};
     var s = Object.assign({}, clone(DEFAULT_SETTINGS), saved);
-    s.workDays = Object.assign({}, defaultWorkDays(), saved && saved.workDays ? saved.workDays : {});
+    s.workDays = Object.assign({}, defaultWorkDays(), saved.workDays || {});
     if (!Array.isArray(s.blockedDates)) s.blockedDates = [];
     if (!Array.isArray(s.blockedSlots)) s.blockedSlots = [];
     return s;
   }
 
   function saveSettings(settings) {
-    return write(K_SETTINGS, settings);
+    cache.settings = clone(settings);
+    background(api("/admin/settings", { method: "PUT", body: JSON.stringify({ settings: settings }) }));
+    return true;
   }
 
   function getAppointments() {
-    var list = read(K_APPOINTMENTS, []);
-    return Array.isArray(list) ? list : [];
+    return Array.isArray(cache.appointments) ? cache.appointments : [];
   }
 
-  function saveAppointments(list) {
-    return write(K_APPOINTMENTS, list);
+  function setAppointments(list) {
+    cache.appointments = list;
   }
 
   function uid() {
@@ -305,7 +358,6 @@
 
   /* ── CRUD записей ────────────────────────────────────── */
   function createAppointment(data) {
-    var list = getAppointments();
     var item = {
       id: uid(),
       date: data.date,
@@ -322,28 +374,60 @@
       source: data.source || "site",
       createdAt: new Date().toISOString()
     };
+    var list = getAppointments().slice();
     list.push(item);
-    saveAppointments(list);
+    setAppointments(list);
+
+    var url = cache.admin ? "/admin/appointments" : "/appointments";
+    var ready = api(url, { method: "POST", body: JSON.stringify(item) }).then(function (res) {
+      var saved = res.appointment || item;
+      setAppointments(getAppointments().map(function (a) { return a.id === item.id ? saved : a; }));
+      if (!cache.admin) {
+        // публичной странице достаточно знать занятые окна
+        setAppointments(getAppointments().map(function (a) {
+          return { date: a.date, time: a.time, durationMin: a.durationMin, status: a.status, createdAt: a.createdAt };
+        }));
+      }
+      return saved;
+    }).catch(function (err) {
+      setAppointments(getAppointments().filter(function (a) { return a.id !== item.id; }));
+      if (typeof errorHandler === "function") errorHandler(err);
+      throw err;
+    });
+
+    item.ready = ready;
     return item;
   }
 
   function updateAppointment(id, patch) {
-    var list = getAppointments();
+    var list = getAppointments().slice();
     var idx = -1;
     for (var i = 0; i < list.length; i++) if (list[i].id === id) { idx = i; break; }
     if (idx === -1) return null;
     list[idx] = Object.assign({}, list[idx], patch);
-    saveAppointments(list);
+    setAppointments(list);
+    background(api("/admin/appointments/" + encodeURIComponent(id), {
+      method: "PATCH",
+      body: JSON.stringify(patch)
+    }).then(function (res) {
+      if (res && res.appointment) {
+        setAppointments(getAppointments().map(function (a) { return a.id === id ? res.appointment : a; }));
+      }
+    }));
     return list[idx];
   }
 
   function deleteAppointment(id) {
-    var list = getAppointments().filter(function (a) { return a.id !== id; });
-    saveAppointments(list);
+    setAppointments(getAppointments().filter(function (a) { return a.id !== id; }));
+    background(api("/admin/appointments/" + encodeURIComponent(id), { method: "DELETE" }));
   }
 
   function getAppointment(id) {
     return getAppointments().filter(function (a) { return a.id === id; })[0] || null;
+  }
+
+  function refreshAdmin() {
+    return api("/admin/data").then(function (data) { applyAdmin(data); return true; });
   }
 
   /* ── Экспорт / импорт ────────────────────────────────── */
@@ -359,19 +443,14 @@
 
   function importAll(raw) {
     var data = JSON.parse(raw);
-    if (!data || typeof data !== "object") throw new Error("Неверный формат файла");
-    if (Array.isArray(data.services)) saveServices(data.services);
-    if (data.settings) saveSettings(data.settings);
-    if (Array.isArray(data.appointments)) saveAppointments(data.appointments);
-    return true;
+    if (!data || typeof data !== "object") return Promise.reject(new Error("Неверный формат файла"));
+    return api("/admin/import", { method: "PUT", body: JSON.stringify(data) })
+      .then(function (res) { applyAdmin(res); return true; });
   }
 
   function resetAll() {
-    try {
-      global.localStorage.removeItem(K_SERVICES);
-      global.localStorage.removeItem(K_SETTINGS);
-      global.localStorage.removeItem(K_APPOINTMENTS);
-    } catch (e) {}
+    return api("/admin/reset", { method: "POST" })
+      .then(function (res) { applyAdmin(res); return true; });
   }
 
   /* ── Публичный API ───────────────────────────────────── */
@@ -402,11 +481,17 @@
     getSettings: getSettings,
     saveSettings: saveSettings,
     getAppointments: getAppointments,
-    saveAppointments: saveAppointments,
+    setAppointments: setAppointments,
     getAppointment: getAppointment,
     createAppointment: createAppointment,
     updateAppointment: updateAppointment,
     deleteAppointment: deleteAppointment,
+    refreshAdmin: refreshAdmin,
+
+    init: init,
+    login: login,
+    logout: logout,
+    onError: onError,
 
     isExpired: isExpired,
     isActive: isActive,

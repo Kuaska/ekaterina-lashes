@@ -1,0 +1,9 @@
+{
+  "name": "ekaterina-lashes",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Сайт и кабинет мастера: ламинирование ресниц, Тюмень",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

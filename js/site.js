@@ -469,10 +469,21 @@
       comment: data.comment
     });
 
-    showSuccess(appointment);
-    renderCalendar();
-    updateMobileCta();
-    toast("Заявка сохранена");
+    var submit = $("#submit-booking");
+    if (submit) { submit.disabled = true; submit.textContent = "Отправляем…"; }
+
+    appointment.ready.then(function (saved) {
+      showSuccess(saved);
+      renderCalendar();
+      updateMobileCta();
+      toast("Заявка отправлена");
+    }).catch(function (err) {
+      showError(err && err.message ? err.message : "Не удалось отправить заявку. Попробуйте ещё раз.");
+      renderSlots();
+      goStep(3);
+    }).then(function () {
+      if (submit) { submit.disabled = false; submit.textContent = "Отправить заявку"; }
+    });
   }
 
   function showSuccess(appointment) {
@@ -637,12 +648,21 @@
 
   /* ── Старт ───────────────────────────────────────────── */
   function init() {
-    renderServices();
-    initBooking();
-    initHeader();
-    initReveal();
-    initContacts();
-    updateMobileCta();
+    S.init().then(function () {
+      renderServices();
+      initBooking();
+      initHeader();
+      initReveal();
+      initContacts();
+      updateMobileCta();
+    }).catch(function () {
+      renderServices();
+      initBooking();
+      initHeader();
+      initReveal();
+      initContacts();
+      updateMobileCta();
+    });
   }
 
   if (document.readyState === "loading") {

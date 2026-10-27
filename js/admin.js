@@ -1,13 +1,11 @@
 /* =========================================================
    admin.js — кабинет мастера
-   Пароль по умолчанию: ekaterina (меняется в ADMIN_PASSWORD)
+   Пароль задаётся на сервере переменной ADMIN_PASSWORD
    ========================================================= */
 (function () {
   "use strict";
 
   var S = window.EK;
-  var ADMIN_PASSWORD = "ekaterina";
-  var SESSION_KEY = "ek_admin_session";
 
   var state = {
     view: "appointments",
@@ -43,10 +41,6 @@
   };
 
   /* ── Авторизация ─────────────────────────────────────── */
-  function isAuthed() {
-    try { return sessionStorage.getItem(SESSION_KEY) === "1"; } catch (e) { return false; }
-  }
-
   function showApp() {
     $("#login-screen").hidden = true;
     $("#admin-app").hidden = false;
@@ -63,19 +57,23 @@
     $("#login-form").addEventListener("submit", function (e) {
       e.preventDefault();
       var value = $("#login-password").value;
-      if (value === ADMIN_PASSWORD) {
-        try { sessionStorage.setItem(SESSION_KEY, "1"); } catch (err) {}
-        $("#login-error").hidden = true;
+      var error = $("#login-error");
+      if (!value) return;
+      S.login(value).then(function () {
+        error.hidden = true;
+        $("#login-password").value = "";
         showApp();
-      } else {
-        $("#login-error").hidden = false;
+      }).catch(function (err) {
+        error.hidden = false;
+        error.textContent = err && err.status === 401
+          ? "Неверный пароль"
+          : "Сервер недоступен. Запустите его командой npm start";
         $("#login-password").select();
-      }
+      });
     });
 
     $("#logout-btn").addEventListener("click", function () {
-      try { sessionStorage.removeItem(SESSION_KEY); } catch (e) {}
-      location.reload();
+      S.logout().then(function () { location.reload(); });
     });
   }
 
@@ -757,7 +755,7 @@
     $("#settings-telegram").value = settings.telegram || "";
 
     var count = S.getAppointments().length;
-    $("#storage-note").textContent = "Сейчас в браузере: " + count + " " +
+    $("#storage-note").textContent = "Сейчас на сервере: " + count + " " +
       plural(count, "запись", "записи", "записей") + ". Экспорт создаёт резервную копию JSON.";
   }
 
@@ -820,15 +818,15 @@
       if (!file) return;
       var reader = new FileReader();
       reader.onload = function () {
-        try {
-          S.importAll(String(reader.result));
+        S.importAll(String(reader.result)).then(function () {
           toast("Данные загружены");
           renderSettings();
           renderAppointments();
           renderWeek();
-        } catch (err) {
+          renderServicesEditor();
+        }).catch(function () {
           toast("Не удалось прочитать файл");
-        }
+        });
       };
       reader.readAsText(file);
       e.target.value = "";
@@ -846,7 +844,7 @@
         { offset: 2, time: "12:00", name: "Ольга", service: main, status: "confirmed", phone: "+7 (912) 777-88-99" },
         { offset: -2, time: "16:00", name: "Дарья", service: main, status: "done", phone: "+7 (912) 444-55-66" }
       ];
-      demo.forEach(function (item) {
+      var jobs = demo.map(function (item) {
         var date = S.toISO(S.addDays(today, item.offset));
         var created = S.createAppointment({
           date: date,
@@ -860,22 +858,33 @@
           comment: item.comment || "",
           source: "demo"
         });
-        S.updateAppointment(created.id, { status: item.status });
+        return created.ready.then(function () {
+          S.updateAppointment(created.id, { status: item.status });
+        });
       });
-      toast("Демо-записи добавлены");
-      renderAppointments();
-      renderWeek();
-      renderSettings();
+      Promise.all(jobs).then(function () {
+        return S.refreshAdmin();
+      }).then(function () {
+        toast("Демо-записи добавлены");
+        renderAppointments();
+        renderWeek();
+        renderSettings();
+      }).catch(function () {
+        toast("Не удалось добавить демо-записи");
+      });
     });
 
     $("#reset-btn").addEventListener("click", function () {
-      if (!confirm("Удалить все записи, услуги и настройки из этого браузера? Действие необратимо.")) return;
-      S.resetAll();
-      toast("Все данные сброшены");
-      renderAppointments();
-      renderWeek();
-      renderServicesEditor();
-      renderSettings();
+      if (!confirm("Удалить все записи, услуги и настройки на сервере? Действие необратимо.")) return;
+      S.resetAll().then(function () {
+        toast("Все данные сброшены");
+        renderAppointments();
+        renderWeek();
+        renderServicesEditor();
+        renderSettings();
+      }).catch(function () {
+        toast("Не удалось сбросить данные");
+      });
     });
   }
 
@@ -910,8 +919,12 @@
   /* ── Старт ───────────────────────────────────────────── */
   function init() {
     initLogin();
-    if (isAuthed()) showApp();
-    else showLogin();
+    S.init("admin").then(function (res) {
+      if (res && res.authed) showApp();
+      else showLogin();
+    }).catch(function () {
+      showLogin();
+    });
   }
 
   if (document.readyState === "loading") {
