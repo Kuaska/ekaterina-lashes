@@ -1451,6 +1451,18 @@ button { cursor: pointer; }
 
 .success-details b { font-weight: 500; color: var(--bordeaux); }
 
+.success-details .success-note {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  max-width: 32ch;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.success-details .btn { align-self: center; margin-top: 4px; }
+
 /* ── Контакты ──────────────────────────────────────────── */
 .section-contacts { background: var(--cream-2); }
 

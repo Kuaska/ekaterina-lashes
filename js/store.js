@@ -118,9 +118,38 @@
     return rest ? h + " ч " + rest + " мин" : h + " ч";
   }
 
-  /* ── Хранилище (данные на сервере) ───────────────────── */
-  var cache = { services: null, settings: null, appointments: null, admin: false };
+  /* ── Хранилище (сервер, а без сервера — localStorage) ── */
+  var cache = { services: null, settings: null, appointments: null, admin: false, offline: false };
   var errorHandler = null;
+
+  var LS = {
+    services: "ek_services_v2",
+    settings: "ek_settings_v1",
+    appointments: "ek_appointments_v1"
+  };
+
+  function lsGet(key, fallback) {
+    try {
+      var raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch (e) { return fallback; }
+  }
+
+  function lsSet(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* приватный режим */ }
+  }
+
+  function hydrateLocal() {
+    cache.services = lsGet(LS.services, null);
+    cache.settings = lsGet(LS.settings, null);
+    cache.appointments = lsGet(LS.appointments, []);
+  }
+
+  function persistLocal() {
+    lsSet(LS.services, cache.services);
+    lsSet(LS.settings, cache.settings);
+    lsSet(LS.appointments, cache.appointments);
+  }
 
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
@@ -162,23 +191,45 @@
   function init(mode) {
     if (mode === "admin") {
       return api("/admin/data").then(function (data) {
+        cache.offline = false;
         applyAdmin(data);
         return { authed: true };
       }).catch(function (err) {
         if (err.status === 401) return { authed: false };
-        throw err;
+        console.warn("Сервер недоступен — кабинет работает в локальном режиме", err);
+        cache.offline = true;
+        hydrateLocal();
+        var authed = false;
+        try { authed = sessionStorage.getItem("ek_admin_local") === "1"; } catch (e) {}
+        if (authed) cache.admin = true;
+        return { authed: authed, offline: true };
       });
     }
     return api("/public").then(function (data) {
+      cache.offline = false;
       applyPublic(data);
       return { authed: false };
     }).catch(function (err) {
-      console.warn("Сервер недоступен, показаны базовые данные", err);
+      console.warn("Сервер недоступен — работаем на локальных данных", err);
+      cache.offline = true;
+      hydrateLocal();
       return { authed: false, offline: true };
     });
   }
 
+  var OFFLINE_PASSWORD = "ekaterina";
+
   function login(password) {
+    if (cache.offline) {
+      if (String(password) !== OFFLINE_PASSWORD) {
+        var err = new Error("Неверный пароль");
+        err.status = 401;
+        return Promise.reject(err);
+      }
+      cache.admin = true;
+      try { sessionStorage.setItem("ek_admin_local", "1"); } catch (e) {}
+      return Promise.resolve(true);
+    }
     return api("/admin/login", { method: "POST", body: JSON.stringify({ password: password }) })
       .then(function (data) { applyAdmin(data); return true; });
   }
@@ -186,6 +237,8 @@
   function logout() {
     cache.admin = false;
     cache.appointments = [];
+    try { sessionStorage.removeItem("ek_admin_local"); } catch (e) {}
+    if (cache.offline) return Promise.resolve(true);
     return api("/admin/logout", { method: "POST" }).catch(function () {});
   }
 
@@ -206,6 +259,7 @@
 
   function saveServices(list) {
     cache.services = clone(list);
+    if (cache.offline) { lsSet(LS.services, cache.services); return true; }
     background(api("/admin/services", { method: "PUT", body: JSON.stringify({ services: list }) }));
     return true;
   }
@@ -221,6 +275,7 @@
 
   function saveSettings(settings) {
     cache.settings = clone(settings);
+    if (cache.offline) { lsSet(LS.settings, cache.settings); return true; }
     background(api("/admin/settings", { method: "PUT", body: JSON.stringify({ settings: settings }) }));
     return true;
   }
@@ -231,6 +286,7 @@
 
   function setAppointments(list) {
     cache.appointments = list;
+    if (cache.offline) lsSet(LS.appointments, list);
   }
 
   function uid() {
@@ -379,6 +435,10 @@
     setAppointments(list);
 
     var url = cache.admin ? "/admin/appointments" : "/appointments";
+    if (cache.offline) {
+      item.ready = Promise.resolve(item);
+      return item;
+    }
     var ready = api(url, { method: "POST", body: JSON.stringify(item) }).then(function (res) {
       var saved = res.appointment || item;
       setAppointments(getAppointments().map(function (a) { return a.id === item.id ? saved : a; }));
@@ -406,6 +466,7 @@
     if (idx === -1) return null;
     list[idx] = Object.assign({}, list[idx], patch);
     setAppointments(list);
+    if (cache.offline) return list[idx];
     background(api("/admin/appointments/" + encodeURIComponent(id), {
       method: "PATCH",
       body: JSON.stringify(patch)
@@ -419,6 +480,7 @@
 
   function deleteAppointment(id) {
     setAppointments(getAppointments().filter(function (a) { return a.id !== id; }));
+    if (cache.offline) return;
     background(api("/admin/appointments/" + encodeURIComponent(id), { method: "DELETE" }));
   }
 
@@ -427,6 +489,7 @@
   }
 
   function refreshAdmin() {
+    if (cache.offline) { hydrateLocal(); cache.admin = true; return Promise.resolve(true); }
     return api("/admin/data").then(function (data) { applyAdmin(data); return true; });
   }
 
@@ -444,11 +507,31 @@
   function importAll(raw) {
     var data = JSON.parse(raw);
     if (!data || typeof data !== "object") return Promise.reject(new Error("Неверный формат файла"));
+    if (cache.offline) {
+      cache.services = data.services || null;
+      cache.settings = data.settings || null;
+      cache.appointments = data.appointments || [];
+      cache.admin = true;
+      persistLocal();
+      return Promise.resolve(true);
+    }
     return api("/admin/import", { method: "PUT", body: JSON.stringify(data) })
       .then(function (res) { applyAdmin(res); return true; });
   }
 
   function resetAll() {
+    if (cache.offline) {
+      try {
+        localStorage.removeItem(LS.services);
+        localStorage.removeItem(LS.settings);
+        localStorage.removeItem(LS.appointments);
+      } catch (e) {}
+      cache.services = null;
+      cache.settings = null;
+      cache.appointments = [];
+      cache.admin = true;
+      return Promise.resolve(true);
+    }
     return api("/admin/reset", { method: "POST" })
       .then(function (res) { applyAdmin(res); return true; });
   }
@@ -492,6 +575,7 @@
     login: login,
     logout: logout,
     onError: onError,
+    isOffline: function () { return cache.offline; },
 
     isExpired: isExpired,
     isActive: isActive,

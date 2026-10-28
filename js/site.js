@@ -494,6 +494,13 @@
         "<span>" + S.formatDateRu(appointment.date) + " · " + appointment.time + "</span>" +
         "<span>Стоимость: " + S.formatPrice(appointment.price) + "</span>" +
         "<span>Статус: ожидает подтверждения</span>";
+      if (S.isOffline()) {
+        var tg = String(S.getSettings().telegram || "").replace(/^@/, "");
+        details.innerHTML +=
+          '<span class="success-note">Точное время закрепим в переписке — напишите мне в Telegram.</span>' +
+          (tg ? '<a class="btn btn-ghost btn-sm" href="https://t.me/' + encodeURIComponent(tg) +
+            '" target="_blank" rel="noopener">Написать в Telegram</a>' : "");
+      }
     }
     $$(".booking-pane").forEach(function (pane) {
       pane.classList.toggle("is-active", pane.dataset.step === "done");

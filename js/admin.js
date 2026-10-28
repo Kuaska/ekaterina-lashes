@@ -67,7 +67,7 @@
         error.hidden = false;
         error.textContent = err && err.status === 401
           ? "Неверный пароль"
-          : "Сервер недоступен. Запустите его командой npm start";
+          : "Сервер недоступен — вход по локальному паролю";
         $("#login-password").select();
       });
     });
@@ -755,7 +755,7 @@
     $("#settings-telegram").value = settings.telegram || "";
 
     var count = S.getAppointments().length;
-    $("#storage-note").textContent = "Сейчас на сервере: " + count + " " +
+    $("#storage-note").textContent = (S.isOffline() ? "Сейчас в этом браузере: " : "Сейчас на сервере: ") + count + " " +
       plural(count, "запись", "записи", "записей") + ". Экспорт создаёт резервную копию JSON.";
   }
 
